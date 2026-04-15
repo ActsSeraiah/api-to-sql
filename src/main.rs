@@ -1,6 +1,5 @@
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
-use reqwest::Url;
 use serde_json::{Map, Value};
 use std::fs;
 use std::path::PathBuf;
@@ -71,8 +70,11 @@ async fn main() -> Result<()> {
 }
 
 async fn fetch_to_file(url: &str, out: &PathBuf) -> Result<()> {
-    let url = Url::parse(url).context("invalid URL")?;
-    let json: Value = reqwest::get(url)
+    let client = reqwest::Client::new();
+    let json: Value = client
+        .get(url)
+        .header("User-Agent", "api_to_sql/0.1.0 (test@example.com)")
+        .send()
         .await
         .context("request failed")?
         .error_for_status()
@@ -107,7 +109,7 @@ fn sql_from_file(input: &PathBuf, table: &str, out: Option<&PathBuf>) -> Result<
         .context("unified input must be a JSON object")?;
 
     let mut cols = Vec::new();
-    flatten_object(obj, "", &mut cols);
+    flatten_object(obj, "", 0, &mut cols);
 
     if cols.is_empty() {
         bail!("unified object does not contain any fields");
@@ -199,7 +201,7 @@ fn merge_object_union(dst: &mut Map<String, Value>, src: &Map<String, Value>) {
     }
 }
 
-fn flatten_object(obj: &Map<String, Value>, prefix: &str, out: &mut Vec<(String, String)>) {
+fn flatten_object(obj: &Map<String, Value>, prefix: &str, depth: usize, out: &mut Vec<(String, String)>) {
     for (key, value) in obj {
         let col = if prefix.is_empty() {
             sanitize_ident(key)
@@ -208,7 +210,11 @@ fn flatten_object(obj: &Map<String, Value>, prefix: &str, out: &mut Vec<(String,
         };
 
         if let Some(child) = value.as_object() {
-            flatten_object(child, &col, out);
+            if depth < 3 {
+                flatten_object(child, &col, depth + 1, out);
+            } else {
+                out.push((col, "NVARCHAR(MAX)".to_string()));
+            }
         } else {
             out.push((col, infer_sql_type(value)));
         }
@@ -236,26 +242,26 @@ fn sanitize_ident(s: &str) -> String {
 
 fn infer_sql_type(v: &Value) -> String {
     match v {
-        Value::Null => "TEXT".to_string(),
-        Value::Bool(_) => "BOOLEAN".to_string(),
+        Value::Null => "VARCHAR(1000)".to_string(),
+        Value::Bool(_) => "BIT".to_string(),
         Value::Number(n) => {
-            if n.is_i64() {
-                "BIGINT".to_string()
-            } else if n.is_u64() {
-                "NUMERIC(20,0)".to_string()
+            if n.is_i64() || n.is_u64() {
+                "INT".to_string()
             } else {
-                "DOUBLE PRECISION".to_string()
+                "DECIMAL(18,9)".to_string()
             }
         }
-        Value::String(_) => "TEXT".to_string(),
-        Value::Array(_) | Value::Object(_) => "JSONB".to_string(),
+        Value::String(_) => "VARCHAR(1000)".to_string(),
+        Value::Array(_) | Value::Object(_) => "NVARCHAR(MAX)".to_string(),
     }
 }
 
 fn build_create_table_sql(table: &str, cols: &[(String, String)]) -> String {
     let table = sanitize_ident(table);
-    let mut lines = Vec::with_capacity(cols.len() + 2);
+    let mut lines = Vec::with_capacity(cols.len() + 4);
     lines.push(format!("CREATE TABLE {} (", table));
+    lines.push("  LogKey INT IDENTITY(1,1) PRIMARY KEY,".to_string());
+    lines.push("  LogDate DATETIME DEFAULT GETDATE(),".to_string());
 
     for (idx, (col, ty)) in cols.iter().enumerate() {
         let comma = if idx + 1 == cols.len() { "" } else { "," };
@@ -292,12 +298,14 @@ mod tests {
         });
 
         let mut cols = Vec::new();
-        flatten_object(obj.as_object().unwrap(), "", &mut cols);
+        flatten_object(obj.as_object().unwrap(), "", 0, &mut cols);
         let sql = build_create_table_sql("forecast_periods", &cols);
 
-        assert!(sql.contains("number BIGINT"));
-        assert!(sql.contains("name TEXT"));
-        assert!(sql.contains("flags JSONB"));
-        assert!(sql.contains("nested_ok BOOLEAN"));
+        assert!(sql.contains("LogKey INT IDENTITY(1,1) PRIMARY KEY"));
+        assert!(sql.contains("LogDate DATETIME DEFAULT GETDATE()"));
+        assert!(sql.contains("number INT"));
+        assert!(sql.contains("name VARCHAR(1000)"));
+        assert!(sql.contains("flags NVARCHAR(MAX)"));
+        assert!(sql.contains("nested_ok BIT"));
     }
 }
