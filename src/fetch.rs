@@ -27,7 +27,7 @@ pub async fn fetch_to_file(
     let client = Client::new();
     let mut request = client
         .get(url)
-        .header("User-Agent", "api_to_sql/0.1.0 (test@example.com)");
+        .header("User-Agent", "api_to_sql/1.0.1 (test@example.com)");
 
     if let Some(token) = bearer_token {
         // Check if user accidentally included "Bearer " prefix
