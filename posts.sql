@@ -1,8 +1,0 @@
-CREATE TABLE posts (
-  LogKey INT IDENTITY(1,1) PRIMARY KEY,
-  LogDate DATETIME DEFAULT GETDATE(),
-  body VARCHAR(1000),
-  id INT,
-  title VARCHAR(1000),
-  userid INT
-);
