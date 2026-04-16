@@ -263,8 +263,10 @@ pub fn sanitize_ident(s: &str) -> String {
     let mut result = String::new();
 
     for ch in s.chars() {
-        if ch.is_alphanumeric() || ch == '_' {
+        if ch.is_ascii_alphanumeric() || ch == '_' {
             result.push(ch.to_ascii_lowercase());
+        } else if ch == ' ' {
+            result.push('_');
         } else {
             result.push('_');
         }
@@ -408,5 +410,12 @@ mod tests {
         assert!(sql.contains("[coordinates__longitude] DECIMAL(18,9) '$.coordinates.Longitude'"));
         assert!(sql.contains("[coordinates__latitude] DECIMAL(18,9) '$.coordinates.Latitude'"));
         assert!(sql.contains("[is_active] BIT '$.is_Active'"));
+    }
+
+    #[test]
+    fn replaces_special_characters_in_identifiers() {
+        let input = "driver’s_first_session_on_the_organization?";
+        let actual = sanitize_ident(input);
+        assert_eq!(actual, "driver_s_first_session_on_the_organization_");
     }
 }
