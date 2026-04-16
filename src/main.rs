@@ -60,11 +60,38 @@ enum Commands {
         #[arg(long)]
         out: Option<PathBuf>,
     },
+
+    /// Generate OPENJSON INSERT SQL to parse API JSON rows into the target table
+    ParseSql {
+        /// Input JSON file path (default: unified.json)
+        #[arg(long, default_value = "unified.json")]
+        input: PathBuf,
+
+        /// Target SQL table name
+        #[arg(long, default_value = "api_result")]
+        table: String,
+
+        /// Maximum depth to flatten nested JSON objects (optional, default: no limit)
+        #[arg(long)]
+        max_depth: Option<usize>,
+
+        /// SQL variable/expression containing full JSON payload (default: @returnval)
+        #[arg(long, default_value = "@returnval")]
+        return_var: String,
+
+        /// SQL variable/expression used by JSON_QUERY to locate row array (default: @DataPath)
+        #[arg(long, default_value = "@DataPath")]
+        data_path: String,
+
+        /// Optional output .sql file path. If omitted, prints SQL to stdout.
+        #[arg(long)]
+        out: Option<PathBuf>,
+    },
 }
 
 /// Main entry point for the api_to_sql CLI application.
 /// Parses command line arguments and dispatches to the appropriate subcommand handler.
-/// Supports three main operations: fetch API data, unify JSON objects, and generate SQL schemas.
+/// Supports four main operations: fetch API data, unify JSON objects, and generate SQL scripts.
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
@@ -78,6 +105,23 @@ async fn main() -> anyhow::Result<()> {
         }
         Commands::Sql { input, table, max_depth, out } => {
             sql::sql_from_file(&input, &table, max_depth, out.as_ref())?
+        }
+        Commands::ParseSql {
+            input,
+            table,
+            max_depth,
+            return_var,
+            data_path,
+            out,
+        } => {
+            sql::parse_sql_from_file(
+                &input,
+                &table,
+                max_depth,
+                &return_var,
+                &data_path,
+                out.as_ref(),
+            )?
         }
     }
 
