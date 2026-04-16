@@ -167,6 +167,20 @@ If this object is already unified, the same structure is used for SQL generation
 
 Nested object paths use double underscores (`__`) as separators so they are easier to distinguish from source field names that may already contain underscores.
 
+### Column Name Normalization
+
+Generated SQL column names are normalized for SQL safety:
+
+- Letters and numbers are preserved
+- Spaces become underscores (`_`)
+- Special characters (anything other than letters, numbers, spaces, or underscore) are replaced with underscores (`_`)
+- Names are lowercased
+
+Example:
+
+- JSON field: `driver’s_first_session_on_the_organization?`
+- SQL column: `driver_s_first_session_on_the_organization_`
+
 ### Depth-Limited Example
 
 For the following input:
