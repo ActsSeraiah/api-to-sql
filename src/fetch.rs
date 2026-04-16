@@ -24,18 +24,41 @@ pub async fn fetch_to_file(url: &str, bearer_token: Option<&str>, out: &PathBuf)
         .header("User-Agent", "api_to_sql/0.1.0 (test@example.com)");
 
     if let Some(token) = bearer_token {
+        // Check if user accidentally included "Bearer " prefix
+        if token.starts_with("Bearer ") {
+            eprintln!("Warning: Bearer token appears to include 'Bearer ' prefix. \
+                      The tool automatically adds this prefix, so please provide only the token value. \
+                      Proceeding with token as provided, but consider removing the 'Bearer ' prefix.");
+        }
         request = request.header("Authorization", format!("Bearer {}", token));
     }
 
-    let json: Value = request
+    let response = request
         .send()
         .await
-        .context("request failed")?
-        .error_for_status()
-        .context("request returned non-success status")?
+        .context("Failed to send HTTP request - check your internet connection and URL")?;
+
+    // Check if the response is successful
+    if !response.status().is_success() {
+        let status = response.status();
+        let error_text = response.text().await.unwrap_or_else(|_| "No error details available".to_string());
+
+        let error_message = format!(
+            "API request failed with status {}: {}\n\
+Please check:\n\
+- Your API endpoint URL is correct\n\
+- Your bearer token (if required) is valid\n\
+- The API is currently available\n\
+- You have the necessary permissions",
+            status, error_text
+        );
+        anyhow::bail!(error_message);
+    }
+
+    let json: Value = response
         .json()
         .await
-        .context("response was not valid JSON")?;
+        .context("Response was not valid JSON - the API may be returning an error page or unexpected format")?;
 
     fs::write(out, serde_json::to_string_pretty(&json)?)
         .with_context(|| format!("failed to write {}", out.display()))?;
