@@ -20,6 +20,10 @@ enum Commands {
         #[arg(long)]
         url: String,
 
+        /// Bearer token for API authentication
+        #[arg(long)]
+        bearer_token: Option<String>,
+
         /// Output file path (default: returnval.json)
         #[arg(long, default_value = "returnval.json")]
         out: PathBuf,
@@ -64,7 +68,7 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Fetch { url, out } => fetch_to_file(&url, &out).await?,
+        Commands::Fetch { url, bearer_token, out } => fetch_to_file(&url, bearer_token.as_deref(), &out).await?,
         Commands::Unify { input, path, out } => unify_to_file(&input, &path, &out)?,
         Commands::Sql { input, table, out } => sql_from_file(&input, &table, out.as_ref())?,
     }
@@ -74,20 +78,28 @@ async fn main() -> Result<()> {
 
 /// Fetches JSON data from a REST API endpoint and saves it to a file.
 /// Makes an HTTP GET request with a User-Agent header to comply with API requirements.
+/// Optionally includes a Bearer token in the Authorization header for authenticated APIs.
 /// The response is parsed as JSON and written to the output file in pretty-printed format.
 ///
 /// # Arguments
 /// * `url` - The API endpoint URL to fetch data from
+/// * `bearer_token` - Optional Bearer token for API authentication
 /// * `out` - Path to the output file where JSON will be saved
 ///
 /// # Returns
 /// Returns `Ok(())` on success, or an error if the request fails, returns non-200 status,
 /// contains invalid JSON, or file writing fails.
-async fn fetch_to_file(url: &str, out: &PathBuf) -> Result<()> {
+async fn fetch_to_file(url: &str, bearer_token: Option<&str>, out: &PathBuf) -> Result<()> {
     let client = reqwest::Client::new();
-    let json: Value = client
+    let mut request = client
         .get(url)
-        .header("User-Agent", "api_to_sql/0.1.0 (test@example.com)")
+        .header("User-Agent", "api_to_sql/0.1.0 (test@example.com)");
+
+    if let Some(token) = bearer_token {
+        request = request.header("Authorization", format!("Bearer {}", token));
+    }
+
+    let json: Value = request
         .send()
         .await
         .context("request failed")?
@@ -192,7 +204,8 @@ fn read_json(path: &PathBuf) -> Result<Value> {
 /// is invalid, empty, or doesn't resolve to an array.
 fn resolve_array_path<'a>(root: &'a Value, path: &str) -> Result<&'a Vec<Value>> {
     if path.trim().is_empty() {
-        bail!("path cannot be empty");
+        return root.as_array()
+            .with_context(|| "root value is not an array");
     }
 
     let target = if path.starts_with('/') {

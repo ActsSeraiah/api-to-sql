@@ -23,15 +23,20 @@ The tool has three subcommands that form a pipeline:
 ### 1. Fetch API Data
 
 ```bash
-cargo run -- fetch --url <API_URL> [--out <output_file>]
+cargo run -- fetch --url <API_URL> [--bearer-token <TOKEN>] [--out <output_file>]
 ```
 
 - `--url`: The API endpoint URL
+- `--bearer-token`: Optional Bearer token for authenticated APIs
 - `--out`: Output file (default: `returnval.json`)
 
-Example:
+Examples:
 ```bash
+# Public API
 cargo run -- fetch --url https://api.weather.gov/gridpoints/OKX/33,37/forecast
+
+# Authenticated API
+cargo run -- fetch --url https://api.example.com/data --bearer-token "your_token_here"
 ```
 
 ### 2. Unify Array Objects
