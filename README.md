@@ -1,6 +1,6 @@
 # api_to_sql
 
-A Rust CLI tool that fetches JSON from an API, unifies arrays of objects, and generates MSSQL SQL scripts for table creation and JSON parsing.
+A Rust CLI tool that forms a four-step pipeline for integrating REST API data into MSSQL: fetch JSON from any API (with Bearer token and/or API key authentication), extract and unify arrays of objects from the response, generate a `CREATE TABLE` statement with inferred column types, and produce an `OPENJSON` INSERT script to parse the API payload directly into that table. Nested objects are automatically flattened into columns (with optional depth limiting), and pre-built binaries are available for Windows, macOS, and Linux.
 
 ## Features
 
