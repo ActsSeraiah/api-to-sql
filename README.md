@@ -86,7 +86,58 @@ cargo run -- sql --table weather_periods --max-depth 2 --out create_table.sql
 - Booleans: `BIT`
 - Null values: `VARCHAR(1000)`
 - Arrays: `NVARCHAR(MAX)`
-- Objects (depth > 3): `NVARCHAR(MAX)`
+- Objects beyond the configured flatten depth: `NVARCHAR(MAX)`
+
+> By default, if `--max-depth` is omitted, the tool flattens all nested objects as far as possible. If `--max-depth <depth>` is set, any nested object deeper than that level is stored as `NVARCHAR(MAX)`.
+
+## Simple JSON Examples
+
+### Input JSON
+
+```json
+{
+  "id": 1,
+  "name": "Widget",
+  "details": {
+    "color": "red",
+    "size": "large"
+  },
+  "tags": ["new", "sale"]
+}
+```
+
+### Unified JSON Result
+
+If this object is already unified, the same structure is used for SQL generation.
+
+### SQL Behavior
+
+- `id` becomes `INT`
+- `name` becomes `VARCHAR(1000)`
+- `details_color` and `details_size` become `VARCHAR(1000)` if flattened
+- `tags` becomes `NVARCHAR(MAX)` because it is an array
+
+### Depth-Limited Example
+
+For the following input:
+
+```json
+{
+  "user": {
+    "name": "Jane",
+    "profile": {
+      "age": 30,
+      "address": {
+        "city": "Seattle"
+      }
+    }
+  }
+}
+```
+
+- With `--max-depth 1`, `user_profile` becomes `NVARCHAR(MAX)`
+- With `--max-depth 2`, `user_profile_address_city` can be flattened
+- With no `--max-depth`, the object is flattened fully into individual columns
 
 ## Additional Columns
 
