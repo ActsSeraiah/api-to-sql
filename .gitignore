@@ -8,6 +8,10 @@ Cargo.lock
 
 # OS
 .DS_Store
+
+# Test output files
+*.json
+*.sql
 Thumbs.db
 
 # Logs
