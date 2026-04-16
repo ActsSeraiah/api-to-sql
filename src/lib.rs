@@ -16,8 +16,10 @@ use std::path::PathBuf;
 /// # Returns
 /// Returns the parsed JSON Value, or an error if the file cannot be read or parsed.
 pub fn read_json(path: &PathBuf) -> Result<Value> {
+    // Read the entire file into a string, attaching a helpful error message if it fails
     let content = fs::read_to_string(path)
         .with_context(|| format!("failed to read {}", path.display()))?;
+    // Parse the string as JSON, attaching a helpful error message if it fails
     serde_json::from_str(&content)
         .with_context(|| format!("failed to parse JSON from {}", path.display()))
 }
@@ -34,15 +36,18 @@ pub fn read_json(path: &PathBuf) -> Result<Value> {
 /// Returns a reference to the Vec<Value> at the specified path, or an error if the path
 /// is invalid, empty (when root is not an array), or doesn't resolve to an array.
 pub fn resolve_array_path<'a>(root: &'a Value, path: &str) -> Result<&'a Vec<Value>> {
+    // An empty path means the caller expects the root JSON value itself to be the array
     if path.trim().is_empty() {
         return root.as_array()
             .with_context(|| "root value is not an array");
     }
 
     let target = if path.starts_with('/') {
+        // RFC 6901 JSON Pointer (e.g. "/data/items") — delegate to serde_json's built-in resolver
         root.pointer(path)
             .with_context(|| format!("JSON pointer path not found: {path}"))?
     } else {
+        // Dot-separated path (e.g. "data.items.0") — walk the JSON tree segment by segment
         let mut cur = root;
         for seg in path.split('.') {
             if seg.is_empty() {
@@ -50,11 +55,13 @@ pub fn resolve_array_path<'a>(root: &'a Value, path: &str) -> Result<&'a Vec<Val
             }
 
             if let Ok(index) = seg.parse::<usize>() {
+                // Segment is a number, so treat the current node as an array and index into it
                 cur = cur
                     .as_array()
                     .and_then(|arr| arr.get(index))
                     .with_context(|| format!("array index segment not found: {seg}"))?;
             } else {
+                // Segment is a key name, so treat the current node as an object and look up the field
                 cur = cur
                     .as_object()
                     .and_then(|obj| obj.get(seg))
@@ -64,6 +71,7 @@ pub fn resolve_array_path<'a>(root: &'a Value, path: &str) -> Result<&'a Vec<Val
         cur
     };
 
+    // The final resolved value must be a JSON array; return an error if it isn't
     target
         .as_array()
         .context("path did not resolve to a JSON array")
@@ -79,16 +87,19 @@ pub fn resolve_array_path<'a>(root: &'a Value, path: &str) -> Result<&'a Vec<Val
 /// # Returns
 /// Returns a unified JSON object (Value::Object) containing all unique fields from all input objects.
 pub fn unify_objects(items: &[Value]) -> Result<Value> {
+    // Start with an empty map that will accumulate every unique field seen across all objects
     let mut unified = Map::new();
 
     for item in items {
         if let Some(obj) = item.as_object() {
+            // Merge each object's fields into the accumulated map (non-destructively)
             merge_object_union(&mut unified, obj);
         } else {
             bail!("array element at index {} is not an object", items.iter().position(|x| x == item).unwrap_or(0));
         }
     }
 
+    // Wrap the accumulated map back into a serde_json Value so callers get a consistent type
     Ok(Value::Object(unified))
 }
 
@@ -132,6 +143,7 @@ pub fn merge_object_union(dst: &mut Map<String, Value>, src: &Map<String, Value>
 /// * `out` - Mutable vector to collect (column_name, sql_type) tuples
 pub fn flatten_object(obj: &Map<String, Value>, prefix: &str, depth: usize, max_depth: Option<usize>, out: &mut Vec<(String, String)>) {
     for (key, value) in obj {
+        // Build the column name by joining the running prefix and this key with "__"
         let col_name = if prefix.is_empty() {
             sanitize_ident(key)
         } else {
@@ -142,6 +154,7 @@ pub fn flatten_object(obj: &Map<String, Value>, prefix: &str, depth: usize, max_
             Value::Object(nested) => {
                 // Always flatten objects if we're below max_depth (or no max_depth set)
                 if max_depth.map_or(true, |max| depth < max) {
+                    // Recurse one level deeper, carrying the current column name as the new prefix
                     flatten_object(nested, &col_name, depth + 1, max_depth, out);
                 } else {
                     // Depth limit reached, store as NVARCHAR(MAX)
@@ -149,6 +162,7 @@ pub fn flatten_object(obj: &Map<String, Value>, prefix: &str, depth: usize, max_
                 }
             }
             _ => {
+                // Scalar or array value — infer its SQL type and record the column directly
                 out.push((col_name, infer_sql_type(value)));
             }
         }
@@ -174,23 +188,28 @@ pub fn flatten_object_with_paths(
     out: &mut Vec<(String, String, String)>,
 ) {
     for (key, value) in obj {
+        // Build the flattened SQL column name using "__" as the nesting separator
         let col_name = if prefix.is_empty() {
             sanitize_ident(key)
         } else {
             sanitize_ident(&format!("{}__{}", prefix, key))
         };
 
+        // Extend the JSON path so OPENJSON knows where to find this field in the payload
         let json_path = format!("{}.{}", json_path_prefix, json_path_segment(key));
 
         match value {
             Value::Object(nested) => {
                 if max_depth.map_or(true, |max| depth < max) {
+                    // Recurse deeper, passing the current column name and JSON path as the new prefixes
                     flatten_object_with_paths(nested, &col_name, &json_path, depth + 1, max_depth, out);
                 } else {
+                    // Depth limit reached — store the whole nested object as raw JSON text
                     out.push((col_name, "NVARCHAR(MAX)".to_string(), json_path));
                 }
             }
             _ => {
+                // Scalar or array — record the column name, its inferred SQL type, and its JSON path
                 out.push((col_name, infer_sql_type(value), json_path));
             }
         }
@@ -213,20 +232,24 @@ pub fn build_openjson_insert_sql(
     return_val_var: &str,
     data_path_expr: &str,
 ) -> String {
+    // Qualify the table name with a schema (defaults to dbo if none is provided)
     let qualified_table = qualify_table_name(table);
 
+    // Build the comma-separated list of bracketed column names for the INSERT clause
     let column_list = cols
         .iter()
         .map(|(name, _, _)| format!("[{}]", name))
         .collect::<Vec<_>>()
         .join(", ");
 
+    // Build the OPENJSON WITH clause lines: each line maps a SQL column to its JSON path
     let with_lines = cols
         .iter()
         .map(|(name, sql_type, json_path)| format!("    [{}] {} '{}'", name, sql_type, json_path))
         .collect::<Vec<_>>()
         .join(",\n");
 
+    // Assemble the full INSERT...SELECT...OPENJSON statement using the parts built above
     format!(
         "INSERT INTO {table}\n    ( {columns} )\nSELECT\n    parsed_row.*\nFROM (\n    SELECT\n        content = JSON_QUERY({return_val_var}, {data_path_expr})\n) as json_data\nCROSS APPLY OPENJSON(content)\nWITH (\n{with_lines}\n) as parsed_row",
         table = qualified_table,
@@ -242,8 +265,10 @@ fn json_path_segment(key: &str) -> String {
         .chars()
         .all(|c| c.is_ascii_alphanumeric() || c == '_')
     {
+        // Simple alphanumeric key — use it as-is (e.g. "items" → "items")
         key.to_string()
     } else {
+        // Key contains special characters — wrap in quotes and escape any existing quotes
         let escaped = key.replace('"', "\\\"");
         format!("\"{}\"", escaped)
     }
@@ -262,6 +287,8 @@ fn json_path_segment(key: &str) -> String {
 pub fn sanitize_ident(s: &str) -> String {
     let mut result = String::new();
 
+    // Walk each character and keep only alphanumerics and underscores (lowercased);
+    // replace spaces and any other special characters with an underscore
     for ch in s.chars() {
         if ch.is_ascii_alphanumeric() || ch == '_' {
             result.push(ch.to_ascii_lowercase());
@@ -272,7 +299,7 @@ pub fn sanitize_ident(s: &str) -> String {
         }
     }
 
-    // Ensure it doesn't start with a digit
+    // SQL identifiers must not start with a digit; prepend an underscore if needed
     if result.chars().next().map_or(false, |c| c.is_ascii_digit()) {
         result.insert(0, '_');
     }
@@ -291,8 +318,10 @@ pub fn sanitize_ident(s: &str) -> String {
 pub fn qualify_table_name(table: &str) -> String {
     match table.split_once('.') {
         Some((schema, table_name)) => {
+            // Caller supplied an explicit schema — sanitize both parts and reassemble
             format!("{}.{}", sanitize_ident(schema), sanitize_ident(table_name))
         }
+        // No schema supplied — default to the dbo schema
         None => format!("dbo.{}", sanitize_ident(table)),
     }
 }
@@ -308,16 +337,22 @@ pub fn qualify_table_name(table: &str) -> String {
 /// MSSQL data type string
 pub fn infer_sql_type(v: &Value) -> String {
     match v {
+        // Null values have no type information, so use a generous varchar as a safe default
         Value::Null => "VARCHAR(1000)".to_string(),
+        // JSON booleans map directly to the SQL Server BIT type (0 or 1)
         Value::Bool(_) => "BIT".to_string(),
         Value::Number(n) => {
             if n.is_i64() {
+                // Whole numbers fit in a standard INT
                 "INT".to_string()
             } else {
+                // Floating-point numbers use a high-precision DECIMAL to avoid rounding loss
                 "DECIMAL(18,9)".to_string()
             }
         }
+        // JSON strings → VARCHAR; 1000 chars covers most real-world API string values
         Value::String(_) => "VARCHAR(1000)".to_string(),
+        // Arrays and objects are stored as raw JSON text in a MAX column
         Value::Array(_) => "NVARCHAR(MAX)".to_string(),
         Value::Object(_) => "NVARCHAR(MAX)".to_string(),
     }
@@ -334,12 +369,16 @@ pub fn infer_sql_type(v: &Value) -> String {
 /// # Returns
 /// Complete CREATE TABLE SQL statement
 pub fn build_create_table_sql(table: &str, cols: &[(String, String)]) -> String {
+    // Start the statement with the fully-qualified table name
     let mut sql = format!("CREATE TABLE {} (\n", qualify_table_name(table));
+    // Every generated table gets an auto-incrementing surrogate primary key
     sql.push_str("  LogKey INT IDENTITY(1,1) PRIMARY KEY,\n");
+    // LogDate lets consumers see when each row was inserted without extra tooling
     sql.push_str("  LogDate DATETIME DEFAULT GETDATE(),\n");
 
     for (i, (col_name, col_type)) in cols.iter().enumerate() {
         sql.push_str(&format!("  {} {}", col_name, col_type));
+        // Append a comma after every column except the last one
         if i < cols.len() - 1 {
             sql.push_str(",");
         }
