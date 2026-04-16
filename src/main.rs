@@ -60,9 +60,9 @@ enum Commands {
         #[arg(long)]
         max_depth: Option<usize>,
 
-        /// Optional output .sql file path. If omitted, prints SQL to stdout.
-        #[arg(long)]
-        out: Option<PathBuf>,
+        /// Output .sql file path (default: create_table.sql)
+        #[arg(long, default_value = "create_table.sql")]
+        out: PathBuf,
     },
 
     /// Generate OPENJSON INSERT SQL to parse API JSON rows into the target table
@@ -113,7 +113,7 @@ async fn main() -> anyhow::Result<()> {
             unify::unify_to_file(&input, &path, &out)?
         }
         Commands::Sql { input, table, max_depth, out } => {
-            sql::sql_from_file(&input, &table, max_depth, out.as_ref())?
+            sql::sql_from_file(&input, &table, max_depth, &out)?
         }
         Commands::ParseSql {
             input,

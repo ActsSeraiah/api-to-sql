@@ -73,17 +73,21 @@ cargo run -- sql --input <input_file> --table <table_name> [--max-depth <depth>]
 - `--input`: Input JSON file (default: `unified.json`)
 - `--table`: Table name for the CREATE TABLE statement
 - `--max-depth`: Maximum depth to flatten nested JSON objects (optional, default: no limit)
-- `--out`: Output SQL file (default: prints to stdout)
+- `--out`: Output SQL file (default: `create_table.sql`)
 
-Generated table DDL always uses the `dbo.` schema prefix.
+If table is provided as `Schema_name.Table_name`, the provided schema is used.
+If no schema is provided, `dbo` is assumed.
 
 Examples:
 ```bash
-# Flatten all nested objects (default behavior)
-cargo run -- sql --table weather_periods --out create_table.sql
+# Flatten all nested objects and write to create_table.sql (default behavior)
+cargo run -- sql --table weather_periods
 
 # Limit flattening to 2 levels deep
 cargo run -- sql --table weather_periods --max-depth 2 --out create_table.sql
+
+# Use a specific schema
+cargo run -- sql --table analytics.weather_periods
 ```
 
 **Note**: Arrays are always stored as `NVARCHAR(MAX)` regardless of the depth setting. When the maximum depth is reached, remaining nested objects are also stored as `NVARCHAR(MAX)`.

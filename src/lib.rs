@@ -285,11 +285,16 @@ pub fn sanitize_ident(s: &str) -> String {
     result
 }
 
-/// Qualifies a target table name using dbo schema.
-/// If a schema-qualified name is provided, only the table segment is used and schema is forced to dbo.
+/// Qualifies a target table name with schema support.
+/// If input is `schema.table`, the provided schema is preserved (sanitized).
+/// If no schema is provided, `dbo` is assumed.
 pub fn qualify_table_name(table: &str) -> String {
-    let table_segment = table.rsplit('.').next().unwrap_or(table);
-    format!("dbo.{}", sanitize_ident(table_segment))
+    match table.split_once('.') {
+        Some((schema, table_name)) => {
+            format!("{}.{}", sanitize_ident(schema), sanitize_ident(table_name))
+        }
+        None => format!("dbo.{}", sanitize_ident(table)),
+    }
 }
 
 /// Infers the appropriate MSSQL data type for a JSON value.
@@ -417,5 +422,15 @@ mod tests {
         let input = "driver’s_first_session_on_the_organization?";
         let actual = sanitize_ident(input);
         assert_eq!(actual, "driver_s_first_session_on_the_organization_");
+    }
+
+    #[test]
+    fn qualifies_table_name_with_default_schema() {
+        assert_eq!(qualify_table_name("session_data"), "dbo.session_data");
+    }
+
+    #[test]
+    fn qualifies_table_name_with_provided_schema() {
+        assert_eq!(qualify_table_name("analytics.session_data"), "analytics.session_data");
     }
 }
