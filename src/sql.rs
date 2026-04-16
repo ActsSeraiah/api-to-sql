@@ -42,14 +42,14 @@ pub fn sql_from_file(input: &PathBuf, table: &str, max_depth: Option<usize>, out
 /// * `max_depth` - Optional maximum depth to flatten nested objects. If None, flatten all levels.
 /// * `return_val_var` - SQL variable/expression containing API response JSON (e.g. @returnval)
 /// * `data_path_expr` - SQL variable/expression for JSON_QUERY path (e.g. @DataPath)
-/// * `out` - Optional output .sql file path. If None, prints SQL to stdout.
+/// * `out` - Output .sql file path.
 pub fn parse_sql_from_file(
     input: &PathBuf,
     table: &str,
     max_depth: Option<usize>,
     return_val_var: &str,
     data_path_expr: &str,
-    out: Option<&PathBuf>,
+    out: &PathBuf,
 ) -> Result<()> {
     let unified = read_json(input)?;
     let obj = unified
@@ -65,16 +65,9 @@ pub fn parse_sql_from_file(
 
     let sql = build_openjson_insert_sql(table, &cols, return_val_var, data_path_expr);
 
-    match out {
-        Some(path) => {
-            fs::write(path, &sql)
-                .with_context(|| format!("failed to write parser SQL to {}", path.display()))?;
-            println!("Wrote parser SQL to {}", path.display());
-        }
-        None => {
-            println!("{}", sql);
-        }
-    }
+    fs::write(out, &sql)
+        .with_context(|| format!("failed to write parser SQL to {}", out.display()))?;
+    println!("Wrote parser SQL to {}", out.display());
 
     Ok(())
 }

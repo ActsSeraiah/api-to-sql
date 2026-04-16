@@ -87,9 +87,9 @@ enum Commands {
         #[arg(long, default_value = "@DataPath")]
         data_path: String,
 
-        /// Optional output .sql file path. If omitted, prints SQL to stdout.
-        #[arg(long)]
-        out: Option<PathBuf>,
+        /// Output .sql file path (default: parse_rows.sql)
+        #[arg(long, default_value = "parse_rows.sql")]
+        out: PathBuf,
     },
 }
 
@@ -129,7 +129,7 @@ async fn main() -> anyhow::Result<()> {
                 max_depth,
                 &return_var,
                 &data_path,
-                out.as_ref(),
+                &out,
             )?
         }
     }

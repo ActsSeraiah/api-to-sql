@@ -103,13 +103,13 @@ cargo run -- parse-sql --input <input_file> --table <table_name> [--max-depth <d
 - `--max-depth`: Maximum depth to flatten nested JSON objects (optional, default: no limit)
 - `--return-var`: SQL variable/expression with full payload JSON (default: `@returnval`)
 - `--data-path`: SQL variable/expression passed to `JSON_QUERY` for the row array path (default: `@DataPath`)
-- `--out`: Output SQL file (default: prints to stdout)
+- `--out`: Output SQL file (default: `parse_rows.sql`)
 
 Generated parser SQL always targets `dbo.<table_name>`.
 
 Example:
 ```bash
-cargo run -- parse-sql --table weather_periods --out parse_weather_periods.sql
+cargo run -- parse-sql --table weather_periods
 ```
 
 This generates SQL in the same pattern as hand-written OPENJSON parsing scripts:
