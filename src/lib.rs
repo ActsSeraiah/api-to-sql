@@ -120,17 +120,17 @@ pub fn merge_object_union(dst: &mut Map<String, Value>, src: &Map<String, Value>
 
 /// Recursively flattens a JSON object into a list of SQL column definitions.
 /// Traverses the object hierarchy, converting nested objects into flattened column names
-/// with underscores. Stops recursing at depth 3 to prevent infinite nesting.
-/// Arrays and deeply nested objects (>3 levels) are stored as NVARCHAR(MAX).
+/// with underscores. Stops recursing when the specified max_depth is reached.
+/// Arrays are always stored as NVARCHAR(MAX) regardless of depth.
+/// When max_depth is None, flattening continues until all nested objects are processed.
 ///
 /// # Arguments
 /// * `obj` - The JSON object to flatten
 /// * `prefix` - Current prefix for nested field names (empty string for root)
 /// * `depth` - Current recursion depth (should start at 0)
+/// * `max_depth` - Optional maximum depth to flatten. If None, flatten all levels.
 /// * `out` - Mutable vector to collect (column_name, sql_type) tuples
-pub fn flatten_object(obj: &Map<String, Value>, prefix: &str, depth: usize, out: &mut Vec<(String, String)>) {
-    const MAX_DEPTH: usize = 3;
-
+pub fn flatten_object(obj: &Map<String, Value>, prefix: &str, depth: usize, max_depth: Option<usize>, out: &mut Vec<(String, String)>) {
     for (key, value) in obj {
         let col_name = if prefix.is_empty() {
             sanitize_ident(key)
@@ -139,8 +139,14 @@ pub fn flatten_object(obj: &Map<String, Value>, prefix: &str, depth: usize, out:
         };
 
         match value {
-            Value::Object(nested) if depth < MAX_DEPTH => {
-                flatten_object(nested, &col_name, depth + 1, out);
+            Value::Object(nested) => {
+                // Always flatten objects if we're below max_depth (or no max_depth set)
+                if max_depth.map_or(true, |max| depth < max) {
+                    flatten_object(nested, &col_name, depth + 1, max_depth, out);
+                } else {
+                    // Depth limit reached, store as NVARCHAR(MAX)
+                    out.push((col_name, "NVARCHAR(MAX)".to_string()));
+                }
             }
             _ => {
                 out.push((col_name, infer_sql_type(value)));
@@ -267,7 +273,7 @@ mod tests {
         let obj = unified.as_object().unwrap();
 
         let mut cols = Vec::new();
-        flatten_object(obj, "", 0, &mut cols);
+        flatten_object(obj, "", 0, None, &mut cols);
 
         let sql = build_create_table_sql("test_table", &cols);
         assert!(sql.contains("LogKey INT IDENTITY(1,1) PRIMARY KEY"));

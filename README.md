@@ -59,17 +59,24 @@ cargo run -- unify --path properties.periods
 ### 3. Generate SQL Schema
 
 ```bash
-cargo run -- sql --input <input_file> --table <table_name> [--out <output_file>]
+cargo run -- sql --input <input_file> --table <table_name> [--max-depth <depth>] [--out <output_file>]
 ```
 
 - `--input`: Input JSON file (default: `unified.json`)
 - `--table`: Table name for the CREATE TABLE statement
+- `--max-depth`: Maximum depth to flatten nested JSON objects (optional, default: no limit)
 - `--out`: Output SQL file (default: prints to stdout)
 
-Example:
+Examples:
 ```bash
+# Flatten all nested objects (default behavior)
 cargo run -- sql --table weather_periods --out create_table.sql
+
+# Limit flattening to 2 levels deep
+cargo run -- sql --table weather_periods --max-depth 2 --out create_table.sql
 ```
+
+**Note**: Arrays are always stored as `NVARCHAR(MAX)` regardless of the depth setting. When the maximum depth is reached, remaining nested objects are also stored as `NVARCHAR(MAX)`.
 
 ## SQL Type Mapping
 

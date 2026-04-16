@@ -52,6 +52,10 @@ enum Commands {
         #[arg(long, default_value = "api_result")]
         table: String,
 
+        /// Maximum depth to flatten nested JSON objects (default: no limit)
+        #[arg(long)]
+        max_depth: Option<usize>,
+
         /// Optional output .sql file path. If omitted, prints SQL to stdout.
         #[arg(long)]
         out: Option<PathBuf>,
@@ -72,8 +76,8 @@ async fn main() -> anyhow::Result<()> {
         Commands::Unify { input, path, out } => {
             unify::unify_to_file(&input, &path, &out)?
         }
-        Commands::Sql { input, table, out } => {
-            sql::sql_from_file(&input, &table, out.as_ref())?
+        Commands::Sql { input, table, max_depth, out } => {
+            sql::sql_from_file(&input, &table, max_depth, out.as_ref())?
         }
     }
 
