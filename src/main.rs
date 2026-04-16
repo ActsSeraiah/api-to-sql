@@ -4,6 +4,7 @@ use std::path::PathBuf;
 
 #[derive(Debug, Parser)]
 #[command(name = "api_to_sql")]
+#[command(version)]
 #[command(about = "Fetch JSON from an API, unify object arrays, and generate SQL schema")]
 struct Cli {
     #[command(subcommand)]
