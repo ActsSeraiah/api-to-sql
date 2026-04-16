@@ -13,11 +13,38 @@ A Rust CLI tool that fetches JSON from an API, unifies arrays of objects, and ge
 
 ## Installation
 
-1. Ensure you have Rust installed: https://rustup.rs/
+### Pre-built Binaries
+
+Download the latest binary for your platform from the [Releases](../../releases) page:
+
+- **Windows**: `api_to_sql-windows-x86_64.exe`
+- **macOS (Intel)**: `api_to_sql-macos-x86_64`
+- **macOS (Apple Silicon)**: `api_to_sql-macos-aarch64`
+- **Linux (Ubuntu/x86_64)**: `api_to_sql-linux-x86_64`
+
+On macOS and Linux you may need to make the binary executable:
+
+```bash
+chmod +x api_to_sql-*
+```
+
+### Build from Source
+
+1. Ensure you have Rust installed: https://rust-lang.org/tools/install/
 2. Clone this repository
 3. Build with `cargo build --release`
 
 ## Usage
+
+Run `api_to_sql --help` (or `api_to_sql <subcommand> --help`) to see all available options from the terminal:
+
+```bash
+api_to_sql --help
+api_to_sql fetch --help
+api_to_sql unify --help
+api_to_sql sql --help
+api_to_sql parse-sql --help
+```
 
 The tool has four subcommands that form a pipeline:
 
