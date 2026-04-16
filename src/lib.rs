@@ -120,7 +120,7 @@ pub fn merge_object_union(dst: &mut Map<String, Value>, src: &Map<String, Value>
 
 /// Recursively flattens a JSON object into a list of SQL column definitions.
 /// Traverses the object hierarchy, converting nested objects into flattened column names
-/// with underscores. Stops recursing when the specified max_depth is reached.
+/// with double-underscore separators. Stops recursing when the specified max_depth is reached.
 /// Arrays are always stored as NVARCHAR(MAX) regardless of depth.
 /// When max_depth is None, flattening continues until all nested objects are processed.
 ///
@@ -135,7 +135,7 @@ pub fn flatten_object(obj: &Map<String, Value>, prefix: &str, depth: usize, max_
         let col_name = if prefix.is_empty() {
             sanitize_ident(key)
         } else {
-            sanitize_ident(&format!("{}_{}", prefix, key))
+            sanitize_ident(&format!("{}__{}", prefix, key))
         };
 
         match value {

@@ -114,8 +114,10 @@ If this object is already unified, the same structure is used for SQL generation
 
 - `id` becomes `INT`
 - `name` becomes `VARCHAR(1000)`
-- `details_color` and `details_size` become `VARCHAR(1000)` if flattened
+- `details__color` and `details__size` become `VARCHAR(1000)` if flattened
 - `tags` becomes `NVARCHAR(MAX)` because it is an array
+
+Nested object paths use double underscores (`__`) as separators so they are easier to distinguish from source field names that may already contain underscores.
 
 ### Depth-Limited Example
 
@@ -135,8 +137,8 @@ For the following input:
 }
 ```
 
-- With `--max-depth 1`, `user_profile` becomes `NVARCHAR(MAX)`
-- With `--max-depth 2`, `user_profile_address_city` can be flattened
+- With `--max-depth 1`, `user__profile` becomes `NVARCHAR(MAX)`
+- With `--max-depth 2`, `user__profile__address__city` can be flattened
 - With no `--max-depth`, the object is flattened fully into individual columns
 
 ## Additional Columns
