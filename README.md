@@ -1,13 +1,14 @@
 # api_to_sql
 
-A Rust CLI tool that fetches JSON from an API, unifies arrays of objects, and generates MSSQL CREATE TABLE statements.
+A Rust CLI tool that fetches JSON from an API, unifies arrays of objects, and generates MSSQL SQL scripts for table creation and JSON parsing.
 
 ## Features
 
 - Fetch JSON data from REST APIs
 - Extract and unify arrays of objects from JSON responses
 - Generate MSSQL CREATE TABLE statements with appropriate column types
-- Handle nested objects up to depth 3, storing deeper structures as NVARCHAR(MAX)
+- Generate OPENJSON INSERT scripts to parse API JSON arrays into the generated table
+- Flatten nested objects with optional depth limiting
 - Arrays are stored as NVARCHAR(MAX)
 
 ## Installation
@@ -18,7 +19,7 @@ A Rust CLI tool that fetches JSON from an API, unifies arrays of objects, and ge
 
 ## Usage
 
-The tool has three subcommands that form a pipeline:
+The tool has four subcommands that form a pipeline:
 
 ### 1. Fetch API Data
 
@@ -67,6 +68,8 @@ cargo run -- sql --input <input_file> --table <table_name> [--max-depth <depth>]
 - `--max-depth`: Maximum depth to flatten nested JSON objects (optional, default: no limit)
 - `--out`: Output SQL file (default: prints to stdout)
 
+Generated table DDL always uses the `dbo.` schema prefix.
+
 Examples:
 ```bash
 # Flatten all nested objects (default behavior)
@@ -77,6 +80,44 @@ cargo run -- sql --table weather_periods --max-depth 2 --out create_table.sql
 ```
 
 **Note**: Arrays are always stored as `NVARCHAR(MAX)` regardless of the depth setting. When the maximum depth is reached, remaining nested objects are also stored as `NVARCHAR(MAX)`.
+
+### 4. Generate SQL Parser Script (OPENJSON)
+
+```bash
+cargo run -- parse-sql --input <input_file> --table <table_name> [--max-depth <depth>] [--return-var <sql_var>] [--data-path <sql_expr>] [--out <output_file>]
+```
+
+- `--input`: Input JSON file (default: `unified.json`)
+- `--table`: Target table name for the INSERT statement
+- `--max-depth`: Maximum depth to flatten nested JSON objects (optional, default: no limit)
+- `--return-var`: SQL variable/expression with full payload JSON (default: `@returnval`)
+- `--data-path`: SQL variable/expression passed to `JSON_QUERY` for the row array path (default: `@DataPath`)
+- `--out`: Output SQL file (default: prints to stdout)
+
+Generated parser SQL always targets `dbo.<table_name>`.
+
+Example:
+```bash
+cargo run -- parse-sql --table weather_periods --out parse_weather_periods.sql
+```
+
+This generates SQL in the same pattern as hand-written OPENJSON parsing scripts:
+
+```sql
+INSERT INTO dbo.weather_periods
+  ( [name], [details__size] )
+SELECT
+  parsed_row.*
+FROM (
+  SELECT
+    content = JSON_QUERY(@returnval, @DataPath)
+) as json_data
+CROSS APPLY OPENJSON(content)
+WITH (
+  [name] VARCHAR(1000) '$.name',
+  [details__size] VARCHAR(1000) '$.details.size'
+) as parsed_row
+```
 
 ## SQL Type Mapping
 
@@ -159,6 +200,9 @@ cargo run -- unify --path properties.periods
 
 # Generate SQL
 cargo run -- sql --table weather_periods --out create_table.sql
+
+# Generate OPENJSON parser SQL
+cargo run -- parse-sql --table weather_periods --out parse_rows.sql
 ```
 
 ## Testing

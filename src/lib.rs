@@ -155,6 +155,100 @@ pub fn flatten_object(obj: &Map<String, Value>, prefix: &str, depth: usize, max_
     }
 }
 
+/// Recursively flattens a JSON object into SQL columns plus JSON path mappings.
+/// The generated mapping can be used in OPENJSON WITH clauses for parsing JSON rows.
+///
+/// # Arguments
+/// * `obj` - The JSON object to flatten
+/// * `prefix` - Current SQL column prefix (empty string for root)
+/// * `json_path_prefix` - Current JSON path prefix (use "$" for root)
+/// * `depth` - Current recursion depth (should start at 0)
+/// * `max_depth` - Optional maximum depth to flatten. If None, flatten all levels.
+/// * `out` - Mutable vector to collect (column_name, sql_type, json_path) tuples
+pub fn flatten_object_with_paths(
+    obj: &Map<String, Value>,
+    prefix: &str,
+    json_path_prefix: &str,
+    depth: usize,
+    max_depth: Option<usize>,
+    out: &mut Vec<(String, String, String)>,
+) {
+    for (key, value) in obj {
+        let col_name = if prefix.is_empty() {
+            sanitize_ident(key)
+        } else {
+            sanitize_ident(&format!("{}__{}", prefix, key))
+        };
+
+        let json_path = format!("{}.{}", json_path_prefix, json_path_segment(key));
+
+        match value {
+            Value::Object(nested) => {
+                if max_depth.map_or(true, |max| depth < max) {
+                    flatten_object_with_paths(nested, &col_name, &json_path, depth + 1, max_depth, out);
+                } else {
+                    out.push((col_name, "NVARCHAR(MAX)".to_string(), json_path));
+                }
+            }
+            _ => {
+                out.push((col_name, infer_sql_type(value), json_path));
+            }
+        }
+    }
+}
+
+/// Builds a SQL Server OPENJSON INSERT script that parses array items into a target table.
+///
+/// # Arguments
+/// * `table` - Target table name
+/// * `cols` - Slice of (column_name, sql_type, json_path) tuples
+/// * `return_val_var` - SQL variable/expression containing the full API payload JSON (e.g. @returnval)
+/// * `data_path_expr` - SQL variable/expression that resolves to the array path (e.g. @DataPath)
+///
+/// # Returns
+/// Complete INSERT...SELECT...OPENJSON SQL statement
+pub fn build_openjson_insert_sql(
+    table: &str,
+    cols: &[(String, String, String)],
+    return_val_var: &str,
+    data_path_expr: &str,
+) -> String {
+    let qualified_table = qualify_table_name(table);
+
+    let column_list = cols
+        .iter()
+        .map(|(name, _, _)| format!("[{}]", name))
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    let with_lines = cols
+        .iter()
+        .map(|(name, sql_type, json_path)| format!("    [{}] {} '{}'", name, sql_type, json_path))
+        .collect::<Vec<_>>()
+        .join(",\n");
+
+    format!(
+        "INSERT INTO {table}\n    ( {columns} )\nSELECT\n    parsed_row.*\nFROM (\n    SELECT\n        content = JSON_QUERY({return_val_var}, {data_path_expr})\n) as json_data\nCROSS APPLY OPENJSON(content)\nWITH (\n{with_lines}\n) as parsed_row",
+        table = qualified_table,
+        columns = column_list,
+        return_val_var = return_val_var,
+        data_path_expr = data_path_expr,
+        with_lines = with_lines
+    )
+}
+
+fn json_path_segment(key: &str) -> String {
+    if key
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '_')
+    {
+        key.to_string()
+    } else {
+        let escaped = key.replace('"', "\\\"");
+        format!("\"{}\"", escaped)
+    }
+}
+
 /// Sanitizes a string to be a valid SQL identifier.
 /// Converts to lowercase, replaces non-alphanumeric characters (except underscores) with underscores,
 /// ensures it doesn't start with a digit, and provides a fallback for empty strings.
@@ -187,6 +281,13 @@ pub fn sanitize_ident(s: &str) -> String {
     }
 
     result
+}
+
+/// Qualifies a target table name using dbo schema.
+/// If a schema-qualified name is provided, only the table segment is used and schema is forced to dbo.
+pub fn qualify_table_name(table: &str) -> String {
+    let table_segment = table.rsplit('.').next().unwrap_or(table);
+    format!("dbo.{}", sanitize_ident(table_segment))
 }
 
 /// Infers the appropriate MSSQL data type for a JSON value.
@@ -226,7 +327,7 @@ pub fn infer_sql_type(v: &Value) -> String {
 /// # Returns
 /// Complete CREATE TABLE SQL statement
 pub fn build_create_table_sql(table: &str, cols: &[(String, String)]) -> String {
-    let mut sql = format!("CREATE TABLE {} (\n", sanitize_ident(table));
+    let mut sql = format!("CREATE TABLE {} (\n", qualify_table_name(table));
     sql.push_str("  LogKey INT IDENTITY(1,1) PRIMARY KEY,\n");
     sql.push_str("  LogDate DATETIME DEFAULT GETDATE(),\n");
 
@@ -276,10 +377,36 @@ mod tests {
         flatten_object(obj, "", 0, None, &mut cols);
 
         let sql = build_create_table_sql("test_table", &cols);
+        assert!(sql.contains("CREATE TABLE dbo.test_table"));
         assert!(sql.contains("LogKey INT IDENTITY(1,1) PRIMARY KEY"));
         assert!(sql.contains("LogDate DATETIME DEFAULT GETDATE()"));
         assert!(sql.contains("name VARCHAR(1000)"));
         assert!(sql.contains("age INT"));
         assert!(sql.contains("active BIT"));
+    }
+
+    #[test]
+    fn builds_openjson_insert_sql_from_nested_json() {
+        let json = r#"{
+            "amount": 12.5,
+            "session_id": "abc",
+            "coordinates": {
+                "Longitude": 10.1,
+                "Latitude": 20.2
+            },
+            "is_Active": true
+        }"#;
+
+        let unified: Value = serde_json::from_str(json).unwrap();
+        let obj = unified.as_object().unwrap();
+
+        let mut cols = Vec::new();
+        flatten_object_with_paths(obj, "", "$", 0, None, &mut cols);
+
+        let sql = build_openjson_insert_sql("Session_Data_Parsed", &cols, "@returnval", "@DataPath");
+        assert!(sql.contains("INSERT INTO dbo.session_data_parsed"));
+        assert!(sql.contains("[coordinates__longitude] DECIMAL(18,9) '$.coordinates.Longitude'"));
+        assert!(sql.contains("[coordinates__latitude] DECIMAL(18,9) '$.coordinates.Latitude'"));
+        assert!(sql.contains("[is_active] BIT '$.is_Active'"));
     }
 }
