@@ -22,6 +22,10 @@ enum Commands {
         #[arg(long)]
         bearer_token: Option<String>,
 
+        /// API key value sent as x-api-key header
+        #[arg(long)]
+        x_api_key: Option<String>,
+
         /// Output file path (default: returnval.json)
         #[arg(long, default_value = "returnval.json")]
         out: PathBuf,
@@ -97,8 +101,13 @@ async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Fetch { url, bearer_token, out } => {
-            fetch::fetch_to_file(&url, bearer_token.as_deref(), &out).await?
+        Commands::Fetch {
+            url,
+            bearer_token,
+            x_api_key,
+            out,
+        } => {
+            fetch::fetch_to_file(&url, bearer_token.as_deref(), x_api_key.as_deref(), &out).await?
         }
         Commands::Unify { input, path, out } => {
             unify::unify_to_file(&input, &path, &out)?

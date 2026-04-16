@@ -12,12 +12,18 @@ use std::path::PathBuf;
 /// # Arguments
 /// * `url` - The API endpoint URL to fetch data from
 /// * `bearer_token` - Optional Bearer token for API authentication
+/// * `x_api_key` - Optional API key value sent as x-api-key header
 /// * `out` - Path to the output file where JSON will be saved
 ///
 /// # Returns
 /// Returns `Ok(())` on success, or an error if the request fails, returns non-200 status,
 /// contains invalid JSON, or file writing fails.
-pub async fn fetch_to_file(url: &str, bearer_token: Option<&str>, out: &PathBuf) -> Result<()> {
+pub async fn fetch_to_file(
+    url: &str,
+    bearer_token: Option<&str>,
+    x_api_key: Option<&str>,
+    out: &PathBuf,
+) -> Result<()> {
     let client = Client::new();
     let mut request = client
         .get(url)
@@ -31,6 +37,10 @@ pub async fn fetch_to_file(url: &str, bearer_token: Option<&str>, out: &PathBuf)
                       Proceeding with token as provided, but consider removing the 'Bearer ' prefix.");
         }
         request = request.header("Authorization", format!("Bearer {}", token));
+    }
+
+    if let Some(api_key) = x_api_key {
+        request = request.header("x-api-key", api_key);
     }
 
     let response = request
@@ -48,6 +58,7 @@ pub async fn fetch_to_file(url: &str, bearer_token: Option<&str>, out: &PathBuf)
 Please check:\n\
 - Your API endpoint URL is correct\n\
 - Your bearer token (if required) is valid\n\
+- Your x-api-key (if required) is valid\n\
 - The API is currently available\n\
 - You have the necessary permissions",
             status, error_text

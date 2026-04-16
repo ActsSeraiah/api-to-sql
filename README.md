@@ -24,11 +24,12 @@ The tool has four subcommands that form a pipeline:
 ### 1. Fetch API Data
 
 ```bash
-cargo run -- fetch --url <API_URL> [--bearer-token <TOKEN>] [--out <output_file>]
+cargo run -- fetch --url <API_URL> [--bearer-token <TOKEN>] [--x-api-key <API_KEY>] [--out <output_file>]
 ```
 
 - `--url`: The API endpoint URL
 - `--bearer-token`: Optional Bearer token for authenticated APIs (do not include "Bearer " prefix - the tool adds it automatically)
+- `--x-api-key`: Optional API key value sent as `x-api-key` header
 - `--out`: Output file (default: `returnval.json`)
 
 Examples:
@@ -38,6 +39,12 @@ cargo run -- fetch --url https://api.weather.gov/gridpoints/OKX/33,37/forecast
 
 # Authenticated API
 cargo run -- fetch --url https://api.example.com/data --bearer-token "your_token_here"
+
+# API key authenticated API
+cargo run -- fetch --url https://api.example.com/data --x-api-key "your_api_key_here"
+
+# API requiring both Bearer token and API key
+cargo run -- fetch --url https://api.example.com/data --bearer-token "your_token_here" --x-api-key "your_api_key_here"
 ```
 
 **Note**: If you accidentally include "Bearer " at the beginning of your token (e.g., `--bearer-token "Bearer your_token"`), the tool will warn you and suggest removing the prefix. The tool automatically adds the "Bearer " prefix to your token.
