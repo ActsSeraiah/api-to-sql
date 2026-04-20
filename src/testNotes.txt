@@ -1,0 +1,2 @@
+- use the test site provided in the assignment
+- use the following API Key for the request: sk_prod_4f8a9c2d7e6b1a0c3d9e8f7a6b5c4d3e
