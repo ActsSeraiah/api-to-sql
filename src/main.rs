@@ -101,7 +101,7 @@ enum Commands {
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
-    match cli.command {
+    match cli.command { // API Key to env1: d107769e-95eb-4472-bd61-d2f7fbb125a3
         Commands::Fetch {
             url,
             bearer_token,
